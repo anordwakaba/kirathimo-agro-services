@@ -1,26 +1,21 @@
 {
-  "name": "kirathimo-agro-services",
+  "name": "kirathimo-agro-services-frontend",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "engines": { "node": "24.x" },
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.2",
-    "bcryptjs": "^3.0.2",
-    "express": "^5.1.0",
-    "jsonwebtoken": "^9.0.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
-    "@types/express": "^5.0.5",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/node": "^24.10.1",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^6.0.1",

@@ -60,5 +60,16 @@ app.post("/api/transactions",auth,async(req:R,res)=>{
 app.get("/api/summary",auth,async(req,res)=>{try{await schema();const d=String(req.query.date||new Date().toISOString().slice(0,10));const r=await sql`SELECT type,amount::float8,cogs::float8,payment_method AS "paymentMethod" FROM transactions WHERE date=${d}`;let sales=0,cogs=0,expenses=0,cashMovement=0;const byPayment:Record<string,number>={};for(const x of r){const a=Number(x.amount);if(x.type==="sale"){sales+=a;cogs+=Number(x.cogs);cashMovement+=a}else if(x.type==="purchase"){cashMovement-=a}else if(x.type==="expense"){expenses+=a;cashMovement-=a}else if(x.type==="cash_in"){cashMovement+=a}else if(x.type==="cash_out"){cashMovement-=a}const sign=["purchase","expense","cash_out"].includes(x.type)?-1:1;byPayment[x.paymentMethod]=(byPayment[x.paymentMethod]||0)+sign*a}res.json({sales,cogs,expenses,netProfit:sales-cogs-expenses,cashMovement,byPayment})}catch{res.status(500).json({error:"Could not calculate report."})}});
 
 app.post("/api/members",auth,owner,async(req:R,res)=>{try{await schema();const email=String(req.body.email||"").trim().toLowerCase(),name=String(req.body.name||"").trim(),role=req.body.role==="owner"?"owner":"worker";if(!name||!email.includes("@"))return res.status(400).json({error:"Valid name and email are required."});const exists=await sql`SELECT id FROM users WHERE email=${email}`;if(exists.length)return res.status(409).json({error:"That email is already registered."});await sql`INSERT INTO invitations(email,name,role) VALUES(${email},${name},${role}) ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,role=EXCLUDED.role`;res.status(201).json({ok:true})}catch{res.status(500).json({error:"Could not create invitation."})}});
-app.use((err:any,_req:Request,res:Response,_next:NextFunction)=>{console.error(err);res.status(500).json({error:"Unexpected server error."})});
+app.use((err:any,_req:Request,res:Response,_next:NextFunction)=>{
+  console.error(err);
+  res.status(500).json({error:"Unexpected server error."});
+});
+
+if (!process.env.VERCEL) {
+  const port = Number(process.env.PORT || 3001);
+  app.listen(port, "0.0.0.0", () => {
+    console.log(`Kirathimo Agro Services API running on http://localhost:${port}`);
+  });
+}
+
 export default app;

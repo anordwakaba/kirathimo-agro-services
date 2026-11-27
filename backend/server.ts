@@ -1,5 +1,8 @@
+import dotenv from "dotenv";
+dotenv.config({ path: "../.env.local" });
 import express, { Request, Response, NextFunction } from "express";
 import { neon } from "@neondatabase/serverless";
+import { createLocalSql } from "./db-local.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
@@ -7,7 +10,9 @@ import crypto from "node:crypto";
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 
-const sql = neon(process.env.DATABASE_URL || "");
+const sql = process.env.LOCAL_DB_HOST
+  ? createLocalSql()
+  : neon(process.env.DATABASE_URL || "");
 const SECRET = process.env.JWT_SECRET || "";
 
 let ready: Promise<void> | null = null;

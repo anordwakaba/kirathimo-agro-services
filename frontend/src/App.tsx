@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 
-type User = { id:string; name:string; email:string; role:"owner"|"worker" };
+type User = { id:string; name:string; email:string; role:"owner"|"worker"; permissions:string[] };
 type Item = { id:string; name:string; category:string; unit:string; stockQty:number; costPrice:number; sellingPrice:number; packSize:number; packLabel:string; packSellingPrice:number };
 type Tx = { id:string; date:string; type:string; itemName?:string; quantity?:number; amount:number; paymentMethod:string; notes?:string };
 
@@ -45,7 +45,11 @@ export default function App(){
   if(user===undefined)return <div className="center">Loading KIRATHIMO…</div>;
   if(!user)return <Auth onDone={refresh}/>;
 
-  const nav=[["dashboard","Dashboard"],["sales","Sales"],["purchases","Purchases"],["inventory","Inventory"],["reports","Reports"],...(user.role==="owner"? [["team","Team"]]:[])] as string[][];
+  const allNav=[["dashboard","Dashboard"],["sales","Sales"],["purchases","Purchases"],["inventory","Inventory"],["reports","Reports"],["banking","Agency Banking"],["team","Team"]] as string[][];
+  const nav=allNav.filter(([key]) =>
+    key==="team" ? user.role==="owner" :
+    user.role==="owner" || user.permissions?.includes(key)
+  );
   return <div className="app">
     <aside>
       <div className="brand"><div className="logo">KA</div><div><b>KIRATHIMO</b><small>AGRO SERVICES</small></div></div>
@@ -60,6 +64,7 @@ export default function App(){
       {tab==="purchases"&&<Entry type="purchase" items={items} onSaved={refresh}/>}
       {tab==="inventory"&&<Inventory items={items} owner={user.role==="owner"} onSaved={refresh}/>}
       {tab==="reports"&&<Report s={summary} tx={tx} date={date}/>}
+      {tab==="banking"&&(user.role==="owner"||user.permissions?.includes("banking"))&&<Banking date={date} owner={user.role==="owner"}/>}
       {tab==="team"&&user.role==="owner"&&<Team/>}
     </main>
   </div>;
@@ -158,6 +163,249 @@ function Entry({type,items,onSaved}:{type:"sale"|"purchase";items:Item[];onSaved
     {msg&&<div className={msg.startsWith("Saved")?"success":"error"}>{msg}</div>}
     {item&&type==="sale"&&<p className="hint">Estimated gross profit: {money((basePrice-item.costPrice)*baseQuantity)}</p>}
   </form></section>
+}
+
+
+function Banking({date,owner}:{date:string;owner:boolean}){
+  const [providers,setProviders]=useState<any[]>([]);
+  const [transactions,setTransactions]=useState<any[]>([]);
+  const [floatData,setFloatData]=useState<any>({providers:[],entries:[]});
+  const [summary,setSummary]=useState<any>({});
+  const [closings,setClosings]=useState<any[]>([]);
+  const [msg,setMsg]=useState("");
+  const [busy,setBusy]=useState(false);
+
+  const [txForm,setTxForm]=useState({
+    providerId:"",transactionId:"",type:"deposit",customerName:"",
+    customerPhone:"",amount:"",commission:"0",status:"completed",notes:""
+  });
+  const [floatForm,setFloatForm]=useState({
+    providerId:"",entryType:"adjustment",direction:"in",
+    amount:"",reference:"",notes:""
+  });
+  const [closingForm,setClosingForm]=useState({actualFloat:"",notes:""});
+
+  async function load(){
+    try{
+      const [p,t,f,s]=await Promise.all([
+        api<{providers:any[]}>("/api/banking/providers"),
+        api<{transactions:any[]}>("/api/banking/transactions?date="+date),
+        api<any>("/api/banking/float"),
+        api<any>("/api/banking/summary?date="+date)
+      ]);
+      setProviders(p.providers);
+      setTransactions(t.transactions);
+      setFloatData(f);
+      setSummary(s.summary||{});
+      setClosings(s.closings||[]);
+      if(!txForm.providerId&&p.providers.length)
+        setTxForm(v=>({...v,providerId:p.providers.find(x=>x.isActive)?.id||""}));
+      if(!floatForm.providerId&&p.providers.length)
+        setFloatForm(v=>({...v,providerId:p.providers.find(x=>x.isActive)?.id||""}));
+      setMsg("");
+    }catch(e:any){setMsg(e.message)}
+  }
+
+  useEffect(()=>{load()},[date]);
+
+  const balances=floatData.providers||[];
+  const expectedFloat=balances.reduce((total:number,p:any)=>total+Number(p.balance||0),0);
+  const activeProviders=providers.filter(p=>p.isActive);
+
+  async function saveTransaction(e:FormEvent){
+    e.preventDefault();setBusy(true);setMsg("");
+    try{
+      await api("/api/banking/transactions",{
+        method:"POST",body:JSON.stringify({
+          ...txForm,amount:Number(txForm.amount),commission:Number(txForm.commission)
+        })
+      });
+      setMsg("Transaction recorded successfully.");
+      setTxForm(v=>({...v,transactionId:"",customerName:"",customerPhone:"",amount:"",commission:"0",notes:""}));
+      await load();
+    }catch(e:any){setMsg(e.message)}
+    finally{setBusy(false)}
+  }
+
+  async function saveProvider(provider:any){
+    setBusy(true);setMsg("");
+    try{
+      await api("/api/banking/providers/"+provider.id,{
+        method:"PATCH",
+        body:JSON.stringify({agentNumber:provider.agentNumber||"",isActive:provider.isActive})
+      });
+      setMsg(provider.name+" settings saved.");
+      await load();
+    }catch(e:any){setMsg(e.message)}
+    finally{setBusy(false)}
+  }
+
+  async function saveFloat(e:FormEvent){
+    e.preventDefault();setBusy(true);setMsg("");
+    try{
+      await api("/api/banking/float",{
+        method:"POST",
+        body:JSON.stringify({...floatForm,amount:Number(floatForm.amount)})
+      });
+      setMsg("Float movement recorded.");
+      setFloatForm(v=>({...v,amount:"",reference:"",notes:""}));
+      await load();
+    }catch(e:any){setMsg(e.message)}
+    finally{setBusy(false)}
+  }
+
+  async function closeDay(e:FormEvent){
+    e.preventDefault();setBusy(true);setMsg("");
+    try{
+      await api("/api/banking/close",{
+        method:"POST",
+        body:JSON.stringify({
+          date,actualFloat:Number(closingForm.actualFloat),notes:closingForm.notes
+        })
+      });
+      setMsg("Daily reconciliation saved.");
+      await load();
+    }catch(e:any){setMsg(e.message)}
+    finally{setBusy(false)}
+  }
+
+  return <div className="banking">
+    <div className="metrics">
+      <M l="Deposits" v={money(summary.deposits||0)}/>
+      <M l="Withdrawals" v={money(summary.withdrawals||0)}/>
+      <M l="Commission earned" v={money(summary.commission||0)}/>
+      <M l="Pending transactions" v={String(summary.pendingCount||0)}/>
+    </div>
+
+    {msg&&<div className={msg.includes("success")||msg.includes("saved")||msg.includes("recorded")?"success":"error"}>{msg}</div>}
+
+    <section className="card">
+      <h2>Banking providers</h2>
+      <p className="hint">Configure agent numbers when available. Leave a number blank if it has not been assigned.</p>
+      <div className="provider-list">
+        {providers.map(provider=><div className="provider-row" key={provider.id}>
+          <div className="provider-name"><b>{provider.name}</b><small>{provider.code}</small></div>
+          <label>Agent number
+            <input value={provider.agentNumber||""} placeholder="Not configured"
+              onChange={e=>setProviders(list=>list.map(x=>x.id===provider.id?{...x,agentNumber:e.target.value}:x))}/>
+          </label>
+          <label className="provider-active">
+            <input type="checkbox" checked={!!provider.isActive}
+              onChange={e=>setProviders(list=>list.map(x=>x.id===provider.id?{...x,isActive:e.target.checked}:x))}/>
+            Active
+          </label>
+          {owner&&<button disabled={busy} onClick={()=>saveProvider(provider)}>Save</button>}
+        </div>)}
+      </div>
+    </section>
+
+    <div className="grid">
+      <section className="card form">
+        <h2>Record banking transaction</h2>
+        <p className="hint">Enter the transaction details from the provider receipt or confirmation.</p>
+        <form onSubmit={saveTransaction}>
+          <label>Provider<select required value={txForm.providerId} onChange={e=>setTxForm({...txForm,providerId:e.target.value})}>
+            <option value="">Select provider</option>
+            {activeProviders.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          </select></label>
+          <label>Provider transaction ID<input required maxLength={120} value={txForm.transactionId} onChange={e=>setTxForm({...txForm,transactionId:e.target.value})}/></label>
+          <div className="two">
+            <label>Transaction type<select value={txForm.type} onChange={e=>setTxForm({...txForm,type:e.target.value})}>
+              <option value="deposit">Deposit</option><option value="withdrawal">Withdrawal</option>
+            </select></label>
+            <label>Status<select value={txForm.status} onChange={e=>setTxForm({...txForm,status:e.target.value})}>
+              <option value="completed">Completed</option><option value="pending">Pending</option>
+              <option value="failed">Failed</option><option value="reversed">Reversed</option>
+            </select></label>
+          </div>
+          <div className="two">
+            <label>Amount (KES)<input required type="number" min="0.01" step="0.01" value={txForm.amount} onChange={e=>setTxForm({...txForm,amount:e.target.value})}/></label>
+            <label>Commission (KES)<input required type="number" min="0" step="0.01" value={txForm.commission} onChange={e=>setTxForm({...txForm,commission:e.target.value})}/></label>
+          </div>
+          <label>Customer name<input value={txForm.customerName} onChange={e=>setTxForm({...txForm,customerName:e.target.value})}/></label>
+          <label>Customer phone<input value={txForm.customerPhone} onChange={e=>setTxForm({...txForm,customerPhone:e.target.value})}/></label>
+          <label>Notes<input value={txForm.notes} onChange={e=>setTxForm({...txForm,notes:e.target.value})}/></label>
+          <button className="primary" disabled={busy||!activeProviders.length}>Record transaction</button>
+        </form>
+      </section>
+
+      <section className="card form">
+        <h2>Float movement</h2>
+        <p className="hint">Record cash or electronic float added to or removed from a provider account. This is separate from customer transaction amounts.</p>
+        <form onSubmit={saveFloat}>
+          <label>Provider<select required value={floatForm.providerId} onChange={e=>setFloatForm({...floatForm,providerId:e.target.value})}>
+            <option value="">Select provider</option>
+            {providers.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          </select></label>
+          <div className="two">
+            <label>Movement<select value={floatForm.entryType} onChange={e=>setFloatForm({...floatForm,entryType:e.target.value})}>
+              <option value="opening">Opening float</option><option value="deposit">Float added</option>
+              <option value="withdrawal">Float removed</option><option value="adjustment">Adjustment</option>
+            </select></label>
+            <label>Direction<select value={floatForm.direction} onChange={e=>setFloatForm({...floatForm,direction:e.target.value})}>
+              <option value="in">Money in (+)</option><option value="out" disabled={floatForm.entryType==="opening"}>Money out (−)</option>
+            </select></label>
+          </div>
+          <label>Amount (KES)<input required type="number" min="0.01" step="0.01" value={floatForm.amount} onChange={e=>setFloatForm({...floatForm,amount:e.target.value})}/></label>
+          <label>Reference<input value={floatForm.reference} onChange={e=>setFloatForm({...floatForm,reference:e.target.value})}/></label>
+          <label>Notes<input value={floatForm.notes} onChange={e=>setFloatForm({...floatForm,notes:e.target.value})}/></label>
+          <button className="primary" disabled={busy||!floatForm.providerId}>Save float movement</button>
+        </form>
+      </section>
+    </div>
+
+    <section className="card">
+      <h2>Current float balances</h2>
+      <div className="table-wrap"><table><thead><tr><th>Provider</th><th>Balance</th></tr></thead>
+        <tbody>{balances.map((p:any)=><tr key={p.providerId}><td>{p.providerName}</td><td>{money(p.balance)}</td></tr>)}
+          {!balances.length&&<tr><td colSpan={2}>No float records yet.</td></tr>}
+        </tbody></table></div>
+      <h3>Recent float movements</h3>
+      <div className="table-wrap"><table><thead><tr><th>Date</th><th>Provider</th><th>Movement</th><th>Direction</th><th>Amount</th><th>Reference</th></tr></thead>
+        <tbody>{(floatData.entries||[]).map((f:any)=><tr key={f.id}>
+          <td>{new Date(f.createdAt).toLocaleString("en-KE")}</td><td>{f.providerName}</td>
+          <td>{f.entryType}</td><td>{f.direction==="in"?"Money in":"Money out"}</td>
+          <td>{money(f.amount)}</td><td>{f.reference||"—"}</td>
+        </tr>)}
+        {!floatData.entries?.length&&<tr><td colSpan={6}>No float movements recorded.</td></tr>}</tbody>
+      </table></div>
+    </section>
+
+    <section className="card">
+      <h2>Banking transactions — {date}</h2>
+      <div className="table-wrap"><table><thead><tr><th>Time</th><th>Provider</th><th>Transaction ID</th><th>Type</th><th>Customer</th><th>Amount</th><th>Commission</th><th>Status</th></tr></thead>
+        <tbody>{transactions.map(t=><tr key={t.id}>
+          <td>{new Date(t.createdAt).toLocaleTimeString("en-KE",{hour:"2-digit",minute:"2-digit"})}</td>
+          <td>{t.providerName}</td><td>{t.transactionId}</td><td>{t.type}</td>
+          <td>{t.customerName||t.customerPhone||"—"}</td><td>{money(t.amount)}</td>
+          <td>{money(t.commission)}</td><td><span className={"badge "+(t.status==="completed"?"in":t.status==="pending"?"pending":"out")}>{t.status}</span></td>
+        </tr>)}
+        {!transactions.length&&<tr><td colSpan={8}>No banking transactions for this date.</td></tr>}</tbody>
+      </table></div>
+    </section>
+
+    <section className="card">
+      <h2>Daily reconciliation — {date}</h2>
+      <div className="metrics">
+        <M l="Expected float" v={money(expectedFloat)}/>
+        <M l="Deposits" v={money(summary.deposits||0)}/>
+        <M l="Withdrawals" v={money(summary.withdrawals||0)}/>
+        <M l="Commission" v={money(summary.commission||0)}/>
+      </div>
+      {owner&&<form className="closing-form" onSubmit={closeDay}>
+        <label>Actual float counted (KES)<input type="number" min="0" step="0.01" required value={closingForm.actualFloat} onChange={e=>setClosingForm({...closingForm,actualFloat:e.target.value})}/></label>
+        <label>Closing notes<input value={closingForm.notes} onChange={e=>setClosingForm({...closingForm,notes:e.target.value})}/></label>
+        <button className="primary" disabled={busy}>Save daily closing</button>
+      </form>}
+      <h3>Saved closings</h3>
+      <div className="table-wrap"><table><thead><tr><th>Date</th><th>Expected float</th><th>Actual float</th><th>Difference</th></tr></thead>
+        <tbody>{closings.map((c:any)=><tr key={c.date}><td>{String(c.date).slice(0,10)}</td>
+          <td>{money(c.expectedFloat)}</td><td>{money(c.actualFloat)}</td>
+          <td>{money(c.difference)}</td></tr>)}
+          {!closings.length&&<tr><td colSpan={4}>No daily closings recorded.</td></tr>}
+        </tbody></table></div>
+    </section>
+  </div>;
 }
 
 function Inventory({items,owner,onSaved}:{items:Item[];owner:boolean;onSaved:()=>void}){

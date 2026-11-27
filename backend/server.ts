@@ -1760,6 +1760,582 @@ app.get(
   }
 );
 
+
+/*
+ * Agency banking: provider configuration
+ */
+const BANKING_PROVIDERS = [
+  { name: "Equity Bank", code: "EQUITY" },
+  { name: "KCB", code: "KCB" },
+  { name: "Co-operative Bank", code: "COOP" },
+  { name: "M-Pesa", code: "MPESA" },
+  { name: "Airtel Money", code: "AIRTEL" },
+];
+
+app.get(
+  "/api/banking/providers",
+  auth,
+  requirePermission("banking"),
+  async (req: R, res) => {
+    try {
+      await schema();
+
+      for (const provider of BANKING_PROVIDERS) {
+        await sql`
+          INSERT INTO banking_providers
+            (business_id, name, code, agent_number)
+          VALUES
+            (${req.user!.businessId}, ${provider.name},
+             ${provider.code}, NULL)
+          ON CONFLICT (business_id, code) DO NOTHING
+        `;
+      }
+
+      const providers = await sql`
+        SELECT
+          id,
+          name,
+          code,
+          agent_number AS "agentNumber",
+          is_active AS "isActive"
+        FROM banking_providers
+        WHERE business_id = ${req.user!.businessId}
+        ORDER BY name
+      `;
+
+      res.json({ providers });
+    } catch (error) {
+      console.error("Banking providers:", error);
+      res.status(500).json({ error: "Could not load banking providers." });
+    }
+  }
+);
+
+app.patch(
+  "/api/banking/providers/:id",
+  auth,
+  requirePermission("banking"),
+  owner,
+  async (req: R, res) => {
+    try {
+      await schema();
+
+      const agentNumber =
+        req.body.agentNumber === null ||
+        req.body.agentNumber === ""
+          ? null
+          : typeof req.body.agentNumber === "string"
+            ? req.body.agentNumber.trim()
+            : undefined;
+
+      if (
+        agentNumber === undefined ||
+        (agentNumber !== null && agentNumber.length > 50)
+      ) {
+        return res.status(400).json({
+          error: "Enter a valid agent number or leave it blank.",
+        });
+      }
+
+      if (typeof req.body.isActive !== "boolean") {
+        return res.status(400).json({
+          error: "Provider active status must be true or false.",
+        });
+      }
+
+      const updated = await sql`
+        UPDATE banking_providers
+        SET
+          agent_number = ${agentNumber},
+          is_active = ${req.body.isActive},
+          updated_at = NOW()
+        WHERE id = ${req.params.id}
+          AND business_id = ${req.user!.businessId}
+        RETURNING id, name, code,
+          agent_number AS "agentNumber",
+          is_active AS "isActive"
+      `;
+
+      if (!updated.length) {
+        return res.status(404).json({ error: "Provider not found." });
+      }
+
+      await audit(
+        req.user!.businessId,
+        req.user!.id,
+        "update",
+        "banking_provider",
+        String(req.params.id),
+        { agentNumber, isActive: req.body.isActive }
+      );
+
+      res.json({ provider: updated[0] });
+    } catch (error) {
+      console.error("Update banking provider:", error);
+      res.status(500).json({ error: "Could not update provider settings." });
+    }
+  }
+);
+
+
+/*
+ * Agency banking: transaction capture
+ */
+app.get(
+  "/api/banking/transactions",
+  auth,
+  requirePermission("banking"),
+  async (req: R, res) => {
+    try {
+      await schema();
+
+      const date =
+        typeof req.query.date === "string" ? req.query.date : null;
+
+      const transactions = await sql`
+        SELECT
+          t.id,
+          t.transaction_id AS "transactionId",
+          t.transaction_type AS type,
+          t.customer_name AS "customerName",
+          t.customer_phone AS "customerPhone",
+          t.amount::float8 AS amount,
+          t.commission::float8 AS commission,
+          t.status,
+          t.notes,
+          t.created_at AS "createdAt",
+          p.name AS "providerName",
+          p.code AS "providerCode"
+        FROM banking_transactions t
+        JOIN banking_providers p ON p.id = t.provider_id
+        WHERE t.business_id = ${req.user!.businessId}
+          AND (${date}::date IS NULL OR t.created_at::date = ${date}::date)
+        ORDER BY t.created_at DESC
+        LIMIT 500
+      `;
+
+      res.json({ transactions });
+    } catch (error) {
+      console.error("Banking transactions:", error);
+      res.status(500).json({ error: "Could not load banking transactions." });
+    }
+  }
+);
+
+app.post(
+  "/api/banking/transactions",
+  auth,
+  requirePermission("banking"),
+  async (req: R, res) => {
+    try {
+      await schema();
+
+      const {
+        providerId,
+        transactionId,
+        type,
+        customerName,
+        customerPhone,
+        notes,
+      } = req.body;
+
+      const amount = n(req.body.amount);
+      const commission = n(req.body.commission ?? 0);
+      const status = req.body.status ?? "completed";
+
+      if (
+        typeof providerId !== "string" ||
+        typeof transactionId !== "string" ||
+        !transactionId.trim() ||
+        transactionId.trim().length > 120 ||
+        !["deposit", "withdrawal"].includes(type) ||
+        !Number.isFinite(amount) ||
+        amount <= 0 ||
+        !Number.isFinite(commission) ||
+        commission < 0 ||
+        commission > amount ||
+        !["pending", "completed", "failed", "reversed"].includes(status)
+      ) {
+        return res.status(400).json({
+          error: "Check the provider, transaction ID, type, amount, commission and status.",
+        });
+      }
+
+      if (
+        (customerName != null &&
+          (typeof customerName !== "string" || customerName.length > 150)) ||
+        (customerPhone != null &&
+          (typeof customerPhone !== "string" || customerPhone.length > 40)) ||
+        (notes != null &&
+          (typeof notes !== "string" || notes.length > 1000))
+      ) {
+        return res.status(400).json({ error: "Customer details or notes are invalid." });
+      }
+
+      const provider = await sql`
+        SELECT id, name
+        FROM banking_providers
+        WHERE id = ${providerId}
+          AND business_id = ${req.user!.businessId}
+          AND is_active = true
+        LIMIT 1
+      `;
+
+      if (!provider.length) {
+        return res.status(400).json({
+          error: "Select an active banking provider.",
+        });
+      }
+
+      const inserted = await sql`
+        INSERT INTO banking_transactions (
+          business_id,
+          provider_id,
+          transaction_id,
+          transaction_type,
+          customer_name,
+          customer_phone,
+          amount,
+          commission,
+          status,
+          notes,
+          created_by
+        )
+        VALUES (
+          ${req.user!.businessId},
+          ${providerId},
+          ${transactionId.trim()},
+          ${type},
+          ${customerName?.trim() || null},
+          ${customerPhone?.trim() || null},
+          ${amount},
+          ${commission},
+          ${status},
+          ${notes?.trim() || null},
+          ${req.user!.id}
+        )
+        RETURNING id
+      `;
+
+      await audit(
+        req.user!.businessId,
+        req.user!.id,
+        "create",
+        "banking_transaction",
+        String(inserted[0].id),
+        {
+          provider: provider[0].name,
+          transactionId: transactionId.trim(),
+          type,
+          amount,
+          commission,
+          status,
+        }
+      );
+
+      res.status(201).json({
+        ok: true,
+        id: inserted[0].id,
+        message: "Banking transaction recorded.",
+      });
+    } catch (error: any) {
+      if (error?.code === "23505") {
+        return res.status(409).json({
+          error: "This transaction ID has already been recorded for this provider.",
+        });
+      }
+
+      console.error("Create banking transaction:", error);
+      res.status(500).json({ error: "Could not record banking transaction." });
+    }
+  }
+);
+
+
+/*
+ * Agency banking: float ledger and daily reconciliation
+ */
+app.get(
+  "/api/banking/float",
+  auth,
+  requirePermission("banking"),
+  async (req: R, res) => {
+    try {
+      await schema();
+
+      const providers = await sql`
+        SELECT
+          p.id AS "providerId",
+          p.name AS "providerName",
+          COALESCE(
+            SUM(
+              CASE
+                WHEN f.direction = 'in' THEN f.amount
+                ELSE -f.amount
+              END
+            ), 0
+          )::float8 AS balance
+        FROM banking_providers p
+        LEFT JOIN banking_float_entries f
+          ON f.provider_id = p.id
+          AND f.business_id = p.business_id
+        WHERE p.business_id = ${req.user!.businessId}
+        GROUP BY p.id, p.name
+        ORDER BY p.name
+      `;
+
+      const entries = await sql`
+        SELECT
+          f.id,
+          f.provider_id AS "providerId",
+          p.name AS "providerName",
+          f.entry_type AS "entryType",
+          f.direction,
+          f.amount::float8 AS amount,
+          f.reference,
+          f.notes,
+          f.created_at AS "createdAt"
+        FROM banking_float_entries f
+        JOIN banking_providers p ON p.id = f.provider_id
+        WHERE f.business_id = ${req.user!.businessId}
+        ORDER BY f.created_at DESC
+        LIMIT 200
+      `;
+
+      res.json({ providers, entries });
+    } catch (error) {
+      console.error("Banking float:", error);
+      res.status(500).json({ error: "Could not load float records." });
+    }
+  }
+);
+
+app.post(
+  "/api/banking/float",
+  auth,
+  requirePermission("banking"),
+  async (req: R, res) => {
+    try {
+      await schema();
+
+      const { providerId, entryType, direction, reference, notes } = req.body;
+      const amount = n(req.body.amount);
+
+      if (
+        typeof providerId !== "string" ||
+        !["opening", "deposit", "withdrawal", "adjustment"].includes(entryType) ||
+        !["in", "out"].includes(direction) ||
+        !Number.isFinite(amount) ||
+        amount <= 0 ||
+        (reference != null &&
+          (typeof reference !== "string" || reference.length > 120)) ||
+        (notes != null &&
+          (typeof notes !== "string" || notes.length > 1000))
+      ) {
+        return res.status(400).json({ error: "Check the float entry details and amount." });
+      }
+
+      if (entryType === "opening" && direction !== "in") {
+        return res.status(400).json({ error: "Opening float must be a money-in entry." });
+      }
+
+      const provider = await sql`
+        SELECT id, name
+        FROM banking_providers
+        WHERE id = ${providerId}
+          AND business_id = ${req.user!.businessId}
+        LIMIT 1
+      `;
+
+      if (!provider.length) {
+        return res.status(404).json({ error: "Provider not found." });
+      }
+
+      const inserted = await sql`
+        INSERT INTO banking_float_entries (
+          business_id, provider_id, entry_type, direction,
+          amount, reference, notes, created_by
+        )
+        VALUES (
+          ${req.user!.businessId}, ${providerId}, ${entryType},
+          ${direction}, ${amount}, ${reference?.trim() || null},
+          ${notes?.trim() || null}, ${req.user!.id}
+        )
+        RETURNING id
+      `;
+
+      await audit(
+        req.user!.businessId,
+        req.user!.id,
+        "create",
+        "banking_float_entry",
+        String(inserted[0].id),
+        { provider: provider[0].name, entryType, direction, amount }
+      );
+
+      res.status(201).json({ ok: true, id: inserted[0].id });
+    } catch (error) {
+      console.error("Create float entry:", error);
+      res.status(500).json({ error: "Could not record float movement." });
+    }
+  }
+);
+
+app.get(
+  "/api/banking/summary",
+  auth,
+  requirePermission("banking"),
+  async (req: R, res) => {
+    try {
+      await schema();
+
+      const date =
+        typeof req.query.date === "string" ? req.query.date : null;
+
+      const totals = await sql`
+        SELECT
+          COALESCE(SUM(amount) FILTER (
+            WHERE transaction_type = 'deposit' AND status = 'completed'
+          ), 0)::float8 AS deposits,
+          COALESCE(SUM(amount) FILTER (
+            WHERE transaction_type = 'withdrawal' AND status = 'completed'
+          ), 0)::float8 AS withdrawals,
+          COALESCE(SUM(commission) FILTER (
+            WHERE status = 'completed'
+          ), 0)::float8 AS commission,
+          COUNT(*) FILTER (WHERE status = 'pending')::int AS "pendingCount",
+          COUNT(*)::int AS "transactionCount"
+        FROM banking_transactions
+        WHERE business_id = ${req.user!.businessId}
+          AND (${date}::date IS NULL OR created_at::date = ${date}::date)
+      `;
+
+      const closings = await sql`
+        SELECT
+          closing_date AS date,
+          total_deposits::float8 AS deposits,
+          total_withdrawals::float8 AS withdrawals,
+          total_commission::float8 AS commission,
+          expected_cash::float8 AS "expectedFloat",
+          actual_cash::float8 AS "actualFloat",
+          difference::float8 AS difference,
+          closed_at AS "closedAt"
+        FROM banking_daily_closings
+        WHERE business_id = ${req.user!.businessId}
+          AND (${date}::date IS NULL OR closing_date = ${date}::date)
+        ORDER BY closing_date DESC
+        LIMIT 30
+      `;
+
+      res.json({ summary: totals[0], closings });
+    } catch (error) {
+      console.error("Banking summary:", error);
+      res.status(500).json({ error: "Could not load banking summary." });
+    }
+  }
+);
+
+app.post(
+  "/api/banking/close",
+  auth,
+  requirePermission("banking"),
+  owner,
+  async (req: R, res) => {
+    try {
+      await schema();
+
+      const date = req.body.date;
+      const actualFloat = n(req.body.actualFloat);
+      const notes = req.body.notes;
+
+      if (
+        typeof date !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+        !Number.isFinite(actualFloat) ||
+        actualFloat < 0 ||
+        (notes != null &&
+          (typeof notes !== "string" || notes.length > 1000))
+      ) {
+        return res.status(400).json({ error: "Enter a valid closing date and actual float." });
+      }
+
+      const totals = await sql`
+        SELECT
+          COALESCE(SUM(amount) FILTER (
+            WHERE transaction_type = 'deposit' AND status = 'completed'
+          ), 0)::numeric AS deposits,
+          COALESCE(SUM(amount) FILTER (
+            WHERE transaction_type = 'withdrawal' AND status = 'completed'
+          ), 0)::numeric AS withdrawals,
+          COALESCE(SUM(commission) FILTER (
+            WHERE status = 'completed'
+          ), 0)::numeric AS commission
+        FROM banking_transactions
+        WHERE business_id = ${req.user!.businessId}
+          AND created_at::date = ${date}::date
+      `;
+
+      const float = await sql`
+        SELECT
+          COALESCE(SUM(
+            CASE WHEN direction = 'in' THEN amount ELSE -amount END
+          ), 0)::numeric AS balance
+        FROM banking_float_entries
+        WHERE business_id = ${req.user!.businessId}
+          AND created_at::date <= ${date}::date
+      `;
+
+      const expectedFloat = Number(float[0].balance);
+      const difference = actualFloat - expectedFloat;
+
+      const closing = await sql`
+        INSERT INTO banking_daily_closings (
+          business_id, closing_date, total_deposits,
+          total_withdrawals, total_commission,
+          expected_cash, actual_cash, difference,
+          notes, closed_by, closed_at
+        )
+        VALUES (
+          ${req.user!.businessId}, ${date}::date,
+          ${totals[0].deposits}, ${totals[0].withdrawals},
+          ${totals[0].commission}, ${expectedFloat},
+          ${actualFloat}, ${difference}, ${notes?.trim() || null},
+          ${req.user!.id}, NOW()
+        )
+        ON CONFLICT (business_id, closing_date)
+        DO UPDATE SET
+          total_deposits = EXCLUDED.total_deposits,
+          total_withdrawals = EXCLUDED.total_withdrawals,
+          total_commission = EXCLUDED.total_commission,
+          expected_cash = EXCLUDED.expected_cash,
+          actual_cash = EXCLUDED.actual_cash,
+          difference = EXCLUDED.difference,
+          notes = EXCLUDED.notes,
+          closed_by = EXCLUDED.closed_by,
+          closed_at = NOW()
+        RETURNING id, closing_date AS date,
+          expected_cash::float8 AS "expectedFloat",
+          actual_cash::float8 AS "actualFloat",
+          difference::float8 AS difference
+      `;
+
+      await audit(
+        req.user!.businessId,
+        req.user!.id,
+        "close",
+        "banking_daily_closing",
+        String(closing[0].id),
+        { date, expectedFloat, actualFloat, difference }
+      );
+
+      res.json({ ok: true, closing: closing[0] });
+    } catch (error) {
+      console.error("Banking daily closing:", error);
+      res.status(500).json({ error: "Could not complete daily reconciliation." });
+    }
+  }
+);
+
 app.use(
   (
     err: any,

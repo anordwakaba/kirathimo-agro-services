@@ -164,7 +164,7 @@ export default function App(){
       {tab==="inventory"&&<Inventory items={items} owner={user.role==="owner"} onSaved={refresh}/>}
       {tab==="reports"&&<Report s={summary} tx={tx} date={date}/>}
       {tab==="banking"&&(user.role==="owner"||user.permissions?.includes("banking"))&&<Banking date={date} owner={user.role==="owner"}/>}
-      {tab==="team"&&user.role==="owner"&&<Team/>}
+      {tab==="team"&&user.role==="owner"&&<Team user={user}/> }
     </main>
   </div>;
 }
@@ -1055,4 +1055,328 @@ function Inventory({items,owner,onSaved}:{items:Item[];owner:boolean;onSaved:()=
 function Report({s,tx,date}:{s:any;tx:Tx[];date:string}){return <section className="card"><div className="report-head"><div><h2>Daily Profit & Loss</h2><p>{date}</p></div><button onClick={()=>window.print()}>Print</button></div><div className="report"><div>Sales<b>{money(s.sales)}</b></div><div>Cost of goods sold<b>{money(s.cogs)}</b></div><div>Expenses<b>{money(s.expenses)}</b></div><div>{s.netProfit>=0?"Net profit":"Net loss"}<b>{money(Math.abs(s.netProfit))}</b></div></div><Table tx={tx}/></section>}
 function Table({tx}:{tx:Tx[]}){return <div className="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Item</th><th>Qty</th><th>Amount</th><th>Payment</th></tr></thead><tbody>{tx.map(t=><tr key={t.id}><td>{t.date}</td><td>{t.type}</td><td>{t.itemName||t.notes||"—"}</td><td>{t.quantity||"—"}</td><td>{money(t.amount)}</td><td>{t.paymentMethod}</td></tr>)}</tbody></table></div>}
 
-function Team(){const[f,setF]=useState({name:"",email:""}),[msg,setMsg]=useState("");async function submit(e:FormEvent){e.preventDefault();try{const r=await api<{message?:string}>("/api/members",{method:"POST",body:JSON.stringify({...f,role:"worker"})});setF({name:"",email:""});setMsg(r.message||"Invitation sent successfully.")}catch(e:any){setMsg(e.message)}}return <section className="card form"><h2>Team access</h2><p>Invite a worker. They will receive an email at this address and create their own password from the invitation.</p><form onSubmit={submit}><label>Name<input required value={f.name} onChange={e=>setF({...f,name:e.target.value})}/></label><label>Email<input type="email" required value={f.email} onChange={e=>setF({...f,email:e.target.value})}/></label><button className="primary">Send invitation email</button>{msg&&<div className={msg.toLowerCase().includes("sent")?"success":"error"}>{msg}</div>}</form></section>}
+function Team({
+  user
+}:{
+  user:User
+}){
+  const [f,setF]=useState({
+    name:"",
+    email:"",
+    role:"worker"
+  });
+
+  const [members,setMembers]=useState<any[]>([]);
+  const [msg,setMsg]=useState("");
+  const [loading,setLoading]=useState(false);
+
+  async function loadMembers(){
+    try{
+      const r=await api<{members:any[]}>("/api/members");
+      setMembers(r.members||[]);
+    }catch(e:any){
+      setMsg(e.message);
+    }
+  }
+
+  useEffect(()=>{
+    loadMembers();
+  },[]);
+
+  async function submit(e:FormEvent){
+    e.preventDefault();
+    setMsg("");
+    setLoading(true);
+
+    try{
+      const r=await api<{message?:string}>(
+        "/api/members",
+        {
+          method:"POST",
+          body:JSON.stringify({
+            name:f.name,
+            email:f.email,
+            role:f.role
+          })
+        }
+      );
+
+      setF({
+        name:"",
+        email:"",
+        role:"worker"
+      });
+
+      setMsg(
+        r.message ||
+        `${f.role==="owner"?"Owner":"Employee"} invitation sent successfully.`
+      );
+
+      await loadMembers();
+    }catch(e:any){
+      setMsg(e.message);
+    }finally{
+      setLoading(false);
+    }
+  }
+
+  async function removeMember(member:any){
+    const label =
+      member.role==="owner"
+        ? "owner"
+        : "employee";
+
+    const confirmed=window.confirm(
+      `Remove ${member.name} (${label})?\n\n`+
+      `Their account will be deactivated and they will no longer be able to log in. `+
+      `Business records and audit history will be preserved.`
+    );
+
+    if(!confirmed) return;
+
+    try{
+      setMsg("");
+
+      await api(
+        `/api/members/${member.id}`,
+        {
+          method:"DELETE"
+        }
+      );
+
+      setMsg(`${member.name} has been removed.`);
+      await loadMembers();
+    }catch(e:any){
+      setMsg(e.message);
+    }
+  }
+
+  return <section className="card form">
+
+    <div style={{
+      display:"flex",
+      justifyContent:"space-between",
+      gap:16,
+      alignItems:"flex-start",
+      flexWrap:"wrap"
+    }}>
+      <div>
+        <h2>Team access</h2>
+
+        <p>
+          Add employees or additional owners.
+          Invitations are sent by email and each member
+          creates their own password.
+        </p>
+      </div>
+
+      <div className="badge in">
+        {members.length} member{members.length===1?"":"s"}
+      </div>
+    </div>
+
+    <form onSubmit={submit}>
+
+      <label>
+        Name
+        <input
+          required
+          value={f.name}
+          onChange={
+            e=>setF({
+              ...f,
+              name:e.target.value
+            })
+          }
+        />
+      </label>
+
+      <label>
+        Email
+        <input
+          type="email"
+          required
+          value={f.email}
+          onChange={
+            e=>setF({
+              ...f,
+              email:e.target.value
+            })
+          }
+        />
+      </label>
+
+      <label>
+        Role
+        <select
+          value={f.role}
+          onChange={
+            e=>setF({
+              ...f,
+              role:e.target.value
+            })
+          }
+        >
+          <option value="worker">
+            Employee
+          </option>
+
+          <option value="owner">
+            Owner
+          </option>
+        </select>
+      </label>
+
+      <button
+        className="primary"
+        disabled={loading}
+      >
+        {loading
+          ? "Sending invitation..."
+          : `Send ${f.role==="owner"?"owner":"employee"} invitation`
+        }
+      </button>
+
+      {msg&&
+        <div className={
+          msg.toLowerCase().includes("sent") ||
+          msg.toLowerCase().includes("removed")
+            ? "success"
+            : "error"
+        }>
+          {msg}
+        </div>
+      }
+
+    </form>
+
+    <div style={{marginTop:32}}>
+
+      <div style={{
+        display:"flex",
+        justifyContent:"space-between",
+        alignItems:"center",
+        gap:12,
+        marginBottom:14
+      }}>
+        <div>
+          <h3 style={{marginBottom:4}}>
+            Team members
+          </h3>
+
+          <p style={{margin:0}}>
+            Manage employee and owner access.
+          </p>
+        </div>
+      </div>
+
+      <div className="table-wrap">
+        <table>
+
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Permissions</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+
+          <tbody>
+
+            {members.map(member=>(
+              <tr key={member.id}>
+
+                <td>
+                  <strong>
+                    {member.name}
+                  </strong>
+                </td>
+
+                <td>
+                  {member.email}
+                </td>
+
+                <td>
+                  <span className={
+                    `badge ${
+                      member.role==="owner"
+                        ? "in"
+                        : ""
+                    }`
+                  }>
+                    {member.role==="owner"
+                      ? "OWNER"
+                      : "EMPLOYEE"
+                    }
+                  </span>
+                </td>
+
+                <td>
+                  <span className={
+                    `badge ${
+                      member.isActive
+                        ? "in"
+                        : "out"
+                    }`
+                  }>
+                    {member.isActive
+                      ? "ACTIVE"
+                      : "REMOVED"
+                    }
+                  </span>
+                </td>
+
+                <td>
+                  {member.role==="owner"
+                    ? "Full access"
+                    : `${(member.permissions||[]).length} permissions`
+                  }
+                </td>
+
+                <td>
+                  {member.id===user?.id
+                    ? <span className="hint">
+                        Current account
+                      </span>
+                    : member.isActive
+                      ? (
+                        <button
+                          type="button"
+                          onClick={()=>
+                            removeMember(member)
+                          }
+                        >
+                          Remove
+                        </button>
+                      )
+                      : (
+                        <span className="hint">
+                          Removed
+                        </span>
+                      )
+                  }
+                </td>
+
+              </tr>
+            ))}
+
+            {!members.length&&(
+              <tr>
+                <td colSpan={6}>
+                  No team members found.
+                </td>
+              </tr>
+            )}
+
+          </tbody>
+
+        </table>
+      </div>
+
+    </div>
+
+  </section>
+}

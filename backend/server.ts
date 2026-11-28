@@ -902,11 +902,22 @@ app.post("/api/auth/register", async (req, res) => {
       }
 
       businessId = inv[0].business_id;
-      role = "worker";
-      permissions = permissionsForRole(
-        "worker",
-        inv[0].permissions
-      );
+
+      const invitedRole =
+        inv[0].role === "owner"
+          ? "owner"
+          : "worker";
+
+      role = invitedRole;
+
+      permissions =
+        invitedRole === "owner"
+          ? [...ALL_PERMISSIONS]
+          : permissionsForRole(
+              "worker",
+              inv[0].permissions
+            );
+
       invitationId = inv[0].id;
     }
 
@@ -1960,18 +1971,29 @@ app.post(
         });
       }
 
-      const permissions = Array.isArray(
-        req.body.permissions
-      )
-        ? req.body.permissions.filter(
-            (p: unknown): p is Permission =>
-              ALL_PERMISSIONS.includes(
-                p as Permission
-              ) &&
-              p !== "team" &&
-              p !== "settings"
-          )
-        : ["dashboard", "sales", "inventory"];
+      const requestedRole =
+        String(req.body.role || "worker")
+          .trim()
+          .toLowerCase();
+
+      const role: "owner" | "worker" =
+        requestedRole === "owner"
+          ? "owner"
+          : "worker";
+
+      const permissions =
+        role === "owner"
+          ? [...ALL_PERMISSIONS]
+          : Array.isArray(req.body.permissions)
+            ? req.body.permissions.filter(
+                (p: unknown): p is Permission =>
+                  ALL_PERMISSIONS.includes(
+                    p as Permission
+                  ) &&
+                  p !== "team" &&
+                  p !== "settings"
+              )
+            : ["dashboard", "sales", "inventory"];
 
       const rawToken =
         invitationToken();
@@ -2002,7 +2024,7 @@ app.post(
           (
             ${email},
             ${name},
-            'worker',
+            ${role},
             ${req.user!.businessId},
             ${JSON.stringify(permissions)}::jsonb,
             ${hash},
@@ -2012,7 +2034,7 @@ app.post(
           ON CONFLICT(email)
           DO UPDATE SET
             name = EXCLUDED.name,
-            role = 'worker',
+            role = EXCLUDED.role,
             business_id = EXCLUDED.business_id,
             permissions = EXCLUDED.permissions,
             token_hash = EXCLUDED.token_hash,
@@ -2097,7 +2119,7 @@ app.patch(
       if (!r.length) {
         return res.status(404).json({
           error:
-            "Employee not found.",
+            "Team member not found.",
         });
       }
 
@@ -2129,6 +2151,71 @@ app.patch(
 /*
  * Owner updates employee permissions.
  */
+/*
+ * Owner removes a team member.
+ *
+ * We deactivate instead of deleting the database record so
+ * sales, banking, audit and other historical records remain
+ * intact.
+ */
+app.delete(
+  "/api/members/:id",
+  auth,
+  owner,
+  async (req: R, res) => {
+    try {
+      await schema();
+
+      if (req.params.id === req.user!.id) {
+        return res.status(400).json({
+          error:
+            "You cannot remove your own owner account.",
+        });
+      }
+
+      const r = await sql`
+        UPDATE users
+        SET is_active = FALSE
+        WHERE id = ${req.params.id}
+          AND business_id = ${req.user!.businessId}
+        RETURNING id, name, email, role, is_active
+      `;
+
+      if (!r.length) {
+        return res.status(404).json({
+          error:
+            "Team member not found.",
+        });
+      }
+
+      await audit(
+        req.user!.businessId,
+        req.user!.id,
+        "team_member_removed",
+        "user",
+        String(req.params.id),
+        {
+          name: r[0].name,
+          email: r[0].email,
+          role: r[0].role,
+        }
+      );
+
+      res.json({
+        ok: true,
+        user: r[0],
+      });
+    } catch (error) {
+      console.error(error);
+
+      res.status(500).json({
+        error:
+          "Could not remove team member.",
+      });
+    }
+  }
+);
+
 app.patch(
   "/api/members/:id/permissions",
   auth,

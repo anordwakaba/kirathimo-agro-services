@@ -1052,3 +1052,312 @@ html[data-theme="dark"] .notice {
     box-shadow: none;
   }
 }
+
+/* =========================================================
+   THEME-SAFE SIDEBAR
+   ========================================================= */
+
+.sidebar {
+  background: linear-gradient(180deg, #063c24 0%, #0b5a34 100%);
+  color: #ffffff;
+}
+
+.sidebar *,
+.sidebar a,
+.sidebar button {
+  color: inherit;
+}
+
+.sidebar nav a,
+.sidebar nav button,
+.sidebar .nav-item,
+.sidebar .menu-item {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.sidebar nav a:hover,
+.sidebar nav button:hover,
+.sidebar .nav-item:hover,
+.sidebar .menu-item:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.sidebar nav a.active,
+.sidebar nav button.active,
+.sidebar .nav-item.active,
+.sidebar .menu-item.active {
+  color: #ffffff;
+  background: rgba(174, 225, 92, 0.18);
+  border-left-color: #b9e769;
+}
+
+.sidebar .brand,
+.sidebar .brand *,
+.sidebar .logo,
+.sidebar .logo *,
+.sidebar .user,
+.sidebar .user *,
+.sidebar .profile,
+.sidebar .profile * {
+  color: #ffffff;
+}
+
+.sidebar .muted,
+.sidebar .role,
+.sidebar .subtitle {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+/* Keep sidebar readable even when the application is in dark mode */
+html[data-theme="dark"] .sidebar {
+  background: linear-gradient(180deg, #042d1c 0%, #07482a 100%);
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .sidebar nav a,
+html[data-theme="dark"] .sidebar nav button,
+html[data-theme="dark"] .sidebar .nav-item,
+html[data-theme="dark"] .sidebar .menu-item {
+  color: rgba(255, 255, 255, 0.90);
+}
+
+html[data-theme="dark"] .sidebar nav a:hover,
+html[data-theme="dark"] .sidebar nav button:hover,
+html[data-theme="dark"] .sidebar .nav-item:hover,
+html[data-theme="dark"] .sidebar .menu-item:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+html[data-theme="dark"] .sidebar nav a.active,
+html[data-theme="dark"] .sidebar nav button.active,
+html[data-theme="dark"] .sidebar .nav-item.active,
+html[data-theme="dark"] .sidebar .menu-item.active {
+  color: #ffffff;
+  background: rgba(174, 225, 92, 0.20);
+}
+
+/* Sign-out button */
+.sidebar button {
+  color: #ffffff;
+}
+
+.sidebar button:hover {
+  color: #ffffff;
+}
+
+/* Sidebar divider */
+.sidebar hr,
+.sidebar .divider {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+
+/* =========================================================
+   KIRATHIMO PREMIUM SIDEBAR
+   Explicit colors prevent theme text from becoming invisible
+   ========================================================= */
+
+.sidebar {
+  position: relative;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(174, 225, 92, 0.10), transparent 28%),
+    linear-gradient(160deg, #06351f 0%, #0a4b2c 52%, #0d6037 100%);
+  color: #ffffff !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 8px 0 30px rgba(3, 30, 18, 0.12);
+}
+
+/* Brand */
+.sidebar .brand,
+.sidebar .brand *,
+.sidebar .logo,
+.sidebar .logo * {
+  color: #ffffff !important;
+}
+
+.sidebar .brand {
+  position: relative;
+}
+
+.sidebar .brand::after {
+  content: "";
+  display: block;
+  width: 42px;
+  height: 3px;
+  margin-top: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #c7ef72, #e7f7b1);
+}
+
+/* Navigation */
+.sidebar nav {
+  margin-top: 24px;
+}
+
+.sidebar nav a,
+.sidebar nav button,
+.sidebar .nav-item,
+.sidebar .menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.88) !important;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+/* Hover */
+.sidebar nav a:hover,
+.sidebar nav button:hover,
+.sidebar .nav-item:hover,
+.sidebar .menu-item:hover {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.085) !important;
+  border-color: rgba(255, 255, 255, 0.08);
+  transform: translateX(3px);
+}
+
+/* Active navigation */
+.sidebar nav a.active,
+.sidebar nav button.active,
+.sidebar .nav-item.active,
+.sidebar .menu-item.active {
+  color: #ffffff !important;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(174, 225, 92, 0.22),
+      rgba(174, 225, 92, 0.08)
+    ) !important;
+  border-color: rgba(194, 235, 119, 0.20);
+  box-shadow:
+    inset 3px 0 0 #c7ef72,
+    0 8px 22px rgba(0, 0, 0, 0.10);
+}
+
+/* Active item glow */
+.sidebar nav a.active::after,
+.sidebar nav button.active::after,
+.sidebar .nav-item.active::after,
+.sidebar .menu-item.active::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #c7ef72;
+  box-shadow: 0 0 12px rgba(199, 239, 114, 0.75);
+}
+
+/* Icons */
+.sidebar svg {
+  color: currentColor !important;
+  stroke: currentColor !important;
+}
+
+/* Secondary/sidebar text */
+.sidebar .muted,
+.sidebar .role,
+.sidebar .subtitle,
+.sidebar small {
+  color: rgba(255, 255, 255, 0.58) !important;
+}
+
+/* Divider */
+.sidebar hr,
+.sidebar .divider {
+  border-color: rgba(255, 255, 255, 0.13) !important;
+}
+
+/* Owner/profile area */
+.sidebar .user,
+.sidebar .profile,
+.sidebar .account,
+.sidebar .user-card {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.10);
+}
+
+/* Sign out */
+.sidebar button {
+  color: rgba(255, 255, 255, 0.88) !important;
+}
+
+.sidebar button:hover {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.10) !important;
+}
+
+/* =========================================================
+   LIGHT MODE
+   ========================================================= */
+
+html[data-theme="light"] .sidebar {
+  background:
+    radial-gradient(circle at 18% 8%, rgba(199, 239, 114, 0.13), transparent 28%),
+    linear-gradient(160deg, #073b23 0%, #0a512f 55%, #0c6138 100%);
+  color: #ffffff !important;
+}
+
+/* =========================================================
+   DARK MODE
+   ========================================================= */
+
+html[data-theme="dark"] .sidebar {
+  background:
+    radial-gradient(circle at 18% 8%, rgba(174, 225, 92, 0.08), transparent 30%),
+    linear-gradient(160deg, #021f13 0%, #063522 55%, #08472a 100%);
+  color: #ffffff !important;
+  border-right-color: rgba(255, 255, 255, 0.07);
+  box-shadow: 8px 0 35px rgba(0, 0, 0, 0.28);
+}
+
+html[data-theme="dark"] .sidebar nav a,
+html[data-theme="dark"] .sidebar nav button,
+html[data-theme="dark"] .sidebar .nav-item,
+html[data-theme="dark"] .sidebar .menu-item {
+  color: rgba(255, 255, 255, 0.90) !important;
+}
+
+html[data-theme="dark"] .sidebar nav a:hover,
+html[data-theme="dark"] .sidebar nav button:hover,
+html[data-theme="dark"] .sidebar .nav-item:hover,
+html[data-theme="dark"] .sidebar .menu-item:hover {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.09) !important;
+}
+
+html[data-theme="dark"] .sidebar nav a.active,
+html[data-theme="dark"] .sidebar nav button.active,
+html[data-theme="dark"] .sidebar .nav-item.active,
+html[data-theme="dark"] .sidebar .menu-item.active {
+  color: #ffffff !important;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(174, 225, 92, 0.24),
+      rgba(174, 225, 92, 0.09)
+    ) !important;
+  border-color: rgba(194, 235, 119, 0.18);
+  box-shadow:
+    inset 3px 0 0 #c7ef72,
+    0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+html[data-theme="dark"] .sidebar .muted,
+html[data-theme="dark"] .sidebar .role,
+html[data-theme="dark"] .sidebar .subtitle,
+html[data-theme="dark"] .sidebar small {
+  color: rgba(255, 255, 255, 0.60) !important;
+}
+

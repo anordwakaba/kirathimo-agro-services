@@ -70,8 +70,43 @@ export default function App(){
     return()=>window.clearInterval(id);
   },[user,date]);
 
-  if(user===undefined)return <div className="center">Loading KIRATHIMO…</div>;
-  if(!user)return <Auth onDone={refresh}/>;
+  const params=new URLSearchParams(window.location.search);
+  const inviteToken=params.get("inviteToken");
+  const resetToken=params.get("resetToken");
+
+  if(inviteToken&&!user)
+    return <InviteSetup
+      token={inviteToken}
+      onDone={()=>{
+        window.history.replaceState(
+          {},
+          document.title,
+          "/"
+        );
+        refresh();
+      }}
+    />;
+
+  if(resetToken&&!user)
+    return <ResetPassword
+      token={resetToken}
+      onDone={()=>{
+        window.history.replaceState(
+          {},
+          document.title,
+          "/"
+        );
+        refresh();
+      }}
+    />;
+
+  if(user===undefined)
+    return <div className="center">
+      Loading KIRATHIMO…
+    </div>;
+
+  if(!user)
+    return <Auth onDone={refresh}/>;
 
   const allNav=[["dashboard","Dashboard"],["sales","Sales"],["purchases","Purchases"],["inventory","Inventory"],["reports","Reports"],["banking","Agency Banking"],["team","Team"]] as string[][];
   const nav=allNav.filter(([key]) =>
@@ -135,13 +170,486 @@ export default function App(){
 }
 
 function Auth({onDone}:{onDone:()=>void}){
-  const [mode,setMode]=useState<"login"|"register">("login"),[f,setF]=useState({name:"",email:"",password:""}),[msg,setMsg]=useState("");
-  async function submit(e:FormEvent){e.preventDefault();setMsg("");try{await api(mode==="login"?"/api/auth/login":"/api/auth/register",{method:"POST",body:JSON.stringify(f)});onDone()}catch(e:any){setMsg(e.message)}}
-  return <div className="login"><section className="card login-card"><div className="logo">KA</div><h1>KIRATHIMO AGRO SERVICES</h1><p>Sales, stock, payments and daily profit/loss.</p>
-    <div className="tabs"><button className={mode==="login"?"selected":""} onClick={()=>setMode("login")}>Sign in</button><button className={mode==="register"?"selected":""} onClick={()=>setMode("register")}>First setup</button></div>
-    <form onSubmit={submit}>{mode==="register"&&<label>Owner name<input required value={f.name} onChange={e=>setF({...f,name:e.target.value})}/></label>}<label>Email<input type="email" required value={f.email} onChange={e=>setF({...f,email:e.target.value})}/></label><label>Password<input type="password" minLength={8} required value={f.password} onChange={e=>setF({...f,password:e.target.value})}/></label><button className="primary">{mode==="login"?"Sign in":"Create owner account"}</button></form>
-    <p className="hint">First setup works only when there are no users.</p>{msg&&<div className="error">{msg}</div>}
-  </section></div>;
+  const [mode,setMode]=useState<"login"|"register">("login");
+  const [f,setF]=useState({name:"",email:"",password:""});
+  const [msg,setMsg]=useState("");
+  const [forgot,setForgot]=useState(false);
+  const [forgotEmail,setForgotEmail]=useState("");
+  const [forgotMsg,setForgotMsg]=useState("");
+
+  async function submit(e:FormEvent){
+    e.preventDefault();
+    setMsg("");
+
+    try{
+      await api(
+        mode==="login"
+          ? "/api/auth/login"
+          : "/api/auth/register",
+        {
+          method:"POST",
+          body:JSON.stringify(f)
+        }
+      );
+
+      onDone();
+    }catch(e:any){
+      setMsg(e.message)
+    }
+  }
+
+  async function requestReset(e:FormEvent){
+    e.preventDefault();
+    setForgotMsg("");
+
+    try{
+      const r =
+        await api<{message:string}>(
+          "/api/auth/forgot-password",
+          {
+            method:"POST",
+            body:JSON.stringify({
+              email:forgotEmail
+            })
+          }
+        );
+
+      setForgotMsg(r.message);
+    }catch(e:any){
+      setForgotMsg(e.message)
+    }
+  }
+
+  if(forgot){
+    return <div className="login">
+      <section className="card login-card">
+        <div className="logo">KA</div>
+
+        <h1>Reset your password</h1>
+
+        <p>
+          Enter the same email address
+          used for your Kirathimo account.
+        </p>
+
+        <form onSubmit={requestReset}>
+          <label>
+            Email
+            <input
+              type="email"
+              required
+              value={forgotEmail}
+              onChange={
+                e=>setForgotEmail(e.target.value)
+              }
+            />
+          </label>
+
+          <button className="primary">
+            Send reset link
+          </button>
+        </form>
+
+        {forgotMsg&&
+          <div
+            className={
+              forgotMsg.includes("sent")
+                ? "success"
+                : "error"
+            }
+          >
+            {forgotMsg}
+          </div>
+        }
+
+        <button
+          type="button"
+          onClick={()=>{
+            setForgot(false);
+            setForgotMsg("");
+          }}
+        >
+          Back to sign in
+        </button>
+      </section>
+    </div>;
+  }
+
+  return <div className="login">
+    <section className="card login-card">
+
+      <div className="logo">KA</div>
+
+      <h1>
+        KIRATHIMO AGRO SERVICES
+      </h1>
+
+      <p>
+        Sales, stock, payments and daily
+        profit/loss.
+      </p>
+
+      <div className="tabs">
+
+        <button
+          className={
+            mode==="login"
+              ? "selected"
+              : ""
+          }
+          onClick={()=>
+            setMode("login")
+          }
+        >
+          Sign in
+        </button>
+
+        <button
+          className={
+            mode==="register"
+              ? "selected"
+              : ""
+          }
+          onClick={()=>
+            setMode("register")
+          }
+        >
+          First setup
+        </button>
+
+      </div>
+
+      <form onSubmit={submit}>
+
+        {mode==="register"&&
+          <label>
+            Owner name
+            <input
+              required
+              value={f.name}
+              onChange={
+                e=>setF({
+                  ...f,
+                  name:e.target.value
+                })
+              }
+            />
+          </label>
+        }
+
+        <label>
+          Email
+          <input
+            type="email"
+            required
+            value={f.email}
+            onChange={
+              e=>setF({
+                ...f,
+                email:e.target.value
+              })
+            }
+          />
+        </label>
+
+        <label>
+          Password
+          <input
+            type="password"
+            minLength={8}
+            required
+            value={f.password}
+            onChange={
+              e=>setF({
+                ...f,
+                password:e.target.value
+              })
+            }
+          />
+        </label>
+
+        <button className="primary">
+          {
+            mode==="login"
+              ? "Sign in"
+              : "Create owner account"
+          }
+        </button>
+
+      </form>
+
+      {mode==="login"&&
+        <button
+          type="button"
+          className="link-button"
+          onClick={()=>
+            setForgot(true)
+          }
+        >
+          Forgot password?
+        </button>
+      }
+
+      <p className="hint">
+        First setup works only when
+        there are no users.
+      </p>
+
+      {msg&&
+        <div className="error">
+          {msg}
+        </div>
+      }
+
+    </section>
+  </div>;
+}
+
+function InviteSetup({
+  token,
+  onDone
+}:{
+  token:string;
+  onDone:()=>void
+}){
+  const [f,setF]=useState({
+    name:"",
+    email:"",
+    password:"",
+    confirm:""
+  });
+
+  const [msg,setMsg]=useState("");
+
+  async function submit(e:FormEvent){
+    e.preventDefault();
+    setMsg("");
+
+    if(f.password!==f.confirm){
+      setMsg(
+        "Passwords do not match."
+      );
+      return;
+    }
+
+    try{
+      await api(
+        "/api/auth/register",
+        {
+          method:"POST",
+          body:JSON.stringify({
+            name:f.name,
+            email:f.email,
+            password:f.password,
+            inviteToken:token
+          })
+        }
+      );
+
+      onDone();
+    }catch(e:any){
+      setMsg(e.message)
+    }
+  }
+
+  return <div className="login">
+    <section className="card login-card">
+
+      <div className="logo">
+        KA
+      </div>
+
+      <h1>
+        Accept your invitation
+      </h1>
+
+      <p>
+        Create your Kirathimo Agro Services
+        password to activate your account.
+      </p>
+
+      <form onSubmit={submit}>
+
+        <label>
+          Name
+          <input
+            required
+            value={f.name}
+            onChange={
+              e=>setF({
+                ...f,
+                name:e.target.value
+              })
+            }
+          />
+        </label>
+
+        <label>
+          Invited email
+          <input
+            type="email"
+            required
+            value={f.email}
+            onChange={
+              e=>setF({
+                ...f,
+                email:e.target.value
+              })
+            }
+          />
+        </label>
+
+        <label>
+          Password
+          <input
+            type="password"
+            minLength={8}
+            required
+            value={f.password}
+            onChange={
+              e=>setF({
+                ...f,
+                password:e.target.value
+              })
+            }
+          />
+        </label>
+
+        <label>
+          Confirm password
+          <input
+            type="password"
+            minLength={8}
+            required
+            value={f.confirm}
+            onChange={
+              e=>setF({
+                ...f,
+                confirm:e.target.value
+              })
+            }
+          />
+        </label>
+
+        <button className="primary">
+          Create password & activate account
+        </button>
+
+      </form>
+
+      {msg&&
+        <div className="error">
+          {msg}
+        </div>
+      }
+
+      <p className="hint">
+        Use the same email address that
+        received this invitation.
+      </p>
+
+    </section>
+  </div>;
+}
+
+function ResetPassword({
+  token,
+  onDone
+}:{
+  token:string;
+  onDone:()=>void
+}){
+  const [password,setPassword]=useState("");
+  const [confirm,setConfirm]=useState("");
+  const [msg,setMsg]=useState("");
+
+  async function submit(e:FormEvent){
+    e.preventDefault();
+    setMsg("");
+
+    if(password!==confirm){
+      setMsg(
+        "Passwords do not match."
+      );
+      return;
+    }
+
+    try{
+      await api(
+        "/api/auth/reset-password",
+        {
+          method:"POST",
+          body:JSON.stringify({
+            token,
+            password
+          })
+        }
+      );
+
+      onDone();
+    }catch(e:any){
+      setMsg(e.message)
+    }
+  }
+
+  return <div className="login">
+    <section className="card login-card">
+
+      <div className="logo">
+        KA
+      </div>
+
+      <h1>
+        Create a new password
+      </h1>
+
+      <p>
+        Choose a new password for your
+        Kirathimo Agro Services account.
+      </p>
+
+      <form onSubmit={submit}>
+
+        <label>
+          New password
+          <input
+            type="password"
+            minLength={8}
+            required
+            value={password}
+            onChange={
+              e=>setPassword(e.target.value)
+            }
+          />
+        </label>
+
+        <label>
+          Confirm password
+          <input
+            type="password"
+            minLength={8}
+            required
+            value={confirm}
+            onChange={
+              e=>setConfirm(e.target.value)
+            }
+          />
+        </label>
+
+        <button className="primary">
+          Save new password
+        </button>
+
+      </form>
+
+      {msg&&
+        <div className="error">
+          {msg}
+        </div>
+      }
+
+    </section>
+  </div>;
 }
 
 function Dashboard({s,tx}:{s:any;tx:Tx[]}){return <><div className="metrics"><M l="Sales" v={money(s.sales)}/><M l="COGS" v={money(s.cogs)}/><M l="Expenses" v={money(s.expenses)}/><M l={s.netProfit>=0?"Profit":"Loss"} v={money(Math.abs(s.netProfit))}/><M l="Cash movement" v={money(s.cashMovement)}/></div><div className="grid"><section className="card"><h2>Payment channels</h2>{payments.map(p=><div className="pay" key={p}><span>{p}</span><b>{money(s.byPayment?.[p]||0)}</b></div>)}</section><section className="card"><h2>Transactions</h2><Table tx={tx.slice(0,12)}/></section></div></>}
@@ -547,4 +1055,4 @@ function Inventory({items,owner,onSaved}:{items:Item[];owner:boolean;onSaved:()=
 function Report({s,tx,date}:{s:any;tx:Tx[];date:string}){return <section className="card"><div className="report-head"><div><h2>Daily Profit & Loss</h2><p>{date}</p></div><button onClick={()=>window.print()}>Print</button></div><div className="report"><div>Sales<b>{money(s.sales)}</b></div><div>Cost of goods sold<b>{money(s.cogs)}</b></div><div>Expenses<b>{money(s.expenses)}</b></div><div>{s.netProfit>=0?"Net profit":"Net loss"}<b>{money(Math.abs(s.netProfit))}</b></div></div><Table tx={tx}/></section>}
 function Table({tx}:{tx:Tx[]}){return <div className="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Item</th><th>Qty</th><th>Amount</th><th>Payment</th></tr></thead><tbody>{tx.map(t=><tr key={t.id}><td>{t.date}</td><td>{t.type}</td><td>{t.itemName||t.notes||"—"}</td><td>{t.quantity||"—"}</td><td>{money(t.amount)}</td><td>{t.paymentMethod}</td></tr>)}</tbody></table></div>}
 
-function Team(){const[f,setF]=useState({name:"",email:"",role:"worker"}),[msg,setMsg]=useState("");async function submit(e:FormEvent){e.preventDefault();try{await api("/api/members",{method:"POST",body:JSON.stringify(f)});setF({name:"",email:"",role:"worker"});setMsg("Invitation created.")}catch(e:any){setMsg(e.message)}}return <section className="card form"><h2>Team access</h2><p>Add the worker or second owner. They register using the invited email.</p><form onSubmit={submit}><label>Name<input required value={f.name} onChange={e=>setF({...f,name:e.target.value})}/></label><label>Email<input type="email" required value={f.email} onChange={e=>setF({...f,email:e.target.value})}/></label><label>Role<select value={f.role} onChange={e=>setF({...f,role:e.target.value})}><option value="worker">Worker</option><option value="owner">Owner</option></select></label><button className="primary">Create invitation</button>{msg&&<div className={msg.includes("created")?"success":"error"}>{msg}</div>}</form></section>}
+function Team(){const[f,setF]=useState({name:"",email:""}),[msg,setMsg]=useState("");async function submit(e:FormEvent){e.preventDefault();try{const r=await api<{message?:string}>("/api/members",{method:"POST",body:JSON.stringify({...f,role:"worker"})});setF({name:"",email:""});setMsg(r.message||"Invitation sent successfully.")}catch(e:any){setMsg(e.message)}}return <section className="card form"><h2>Team access</h2><p>Invite a worker. They will receive an email at this address and create their own password from the invitation.</p><form onSubmit={submit}><label>Name<input required value={f.name} onChange={e=>setF({...f,name:e.target.value})}/></label><label>Email<input type="email" required value={f.email} onChange={e=>setF({...f,email:e.target.value})}/></label><button className="primary">Send invitation email</button>{msg&&<div className={msg.toLowerCase().includes("sent")?"success":"error"}>{msg}</div>}</form></section>}

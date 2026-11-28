@@ -255,6 +255,32 @@ async function schema() {
       ADD COLUMN IF NOT EXISTS used_at TIMESTAMPTZ
     `;
 
+    await sql`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens(
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL
+          REFERENCES users(id)
+          ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS
+      password_reset_tokens_user_idx
+      ON password_reset_tokens(user_id)
+    `;
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS
+      password_reset_tokens_expiry_idx
+      ON password_reset_tokens(expires_at)
+    `;
+
+
     /*
      * Audit history.
      */
@@ -483,6 +509,279 @@ function invitationHash(token: string) {
     .update(token)
     .digest("hex");
 }
+
+function appUrl() {
+  return (
+    process.env.APP_URL ||
+    (process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:5173")
+  ).replace(/\/$/, "");
+}
+
+async function sendEmail(
+  to: string,
+  subject: string,
+  html: string
+) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM;
+
+  if (!apiKey || !from) {
+    throw new Error(
+      "Email service is not configured. Set RESEND_API_KEY and EMAIL_FROM."
+    );
+  }
+
+  const response = await fetch(
+    "https://api.resend.com/emails",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        subject,
+        html,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const body = await response.text();
+
+    throw new Error(
+      `Email provider rejected the message: ${body.slice(0, 500)}`
+    );
+  }
+}
+
+function emailButton(
+  url: string,
+  label: string
+) {
+  return `
+    <a href="${url}"
+      style="
+        display:inline-block;
+        padding:13px 22px;
+        background:#0a4b2c;
+        color:#fff;
+        text-decoration:none;
+        border-radius:10px;
+        font-weight:700
+      ">
+      ${label}
+    </a>
+  `;
+}
+
+async function sendInvitationEmail(params: {
+  email: string;
+  name: string;
+  role: string;
+  invitationUrl: string;
+  expiresAt: Date;
+}) {
+  const {
+    email,
+    name,
+    role,
+    invitationUrl,
+    expiresAt,
+  } = params;
+
+  await sendEmail(
+    email,
+    "You're invited to Kirathimo Agro Services",
+    `
+      <div style="
+        font-family:Arial,sans-serif;
+        max-width:620px;
+        margin:0 auto;
+        color:#17231c
+      ">
+
+        <div style="
+          background:#06351f;
+          padding:24px;
+          border-radius:14px 14px 0 0;
+          color:#fff
+        ">
+          <div style="
+            font-size:22px;
+            font-weight:800
+          ">
+            KIRATHIMO
+          </div>
+
+          <div style="
+            font-size:12px;
+            letter-spacing:2px;
+            color:#c7ef72
+          ">
+            AGRO SERVICES
+          </div>
+        </div>
+
+        <div style="
+          padding:30px;
+          border:1px solid #e5e9e6;
+          border-top:0;
+          border-radius:0 0 14px 14px
+        ">
+
+          <h2>You're invited, ${name}</h2>
+
+          <p>
+            You have been invited to join
+            <strong>Kirathimo Agro Services</strong>
+            as a <strong>${role}</strong>.
+          </p>
+
+          <p>
+            Click below to accept the invitation and create
+            your password.
+          </p>
+
+          <p>
+            Your account will use this invited email address:
+            <strong>${email}</strong>.
+          </p>
+
+          <p style="margin:26px 0">
+            ${emailButton(
+              invitationUrl,
+              "Accept invitation & create password"
+            )}
+          </p>
+
+          <p style="
+            font-size:13px;
+            color:#64736a
+          ">
+            This invitation expires on
+            ${expiresAt.toLocaleString("en-KE")}.
+          </p>
+
+          <p style="
+            font-size:13px;
+            color:#64736a
+          ">
+            If the button does not work, copy this address
+            into your browser:<br/>
+            ${invitationUrl}
+          </p>
+
+          <p style="
+            font-size:13px;
+            color:#64736a
+          ">
+            If you were not expecting this invitation,
+            you can ignore this email.
+          </p>
+
+        </div>
+      </div>
+    `
+  );
+}
+
+async function sendPasswordResetEmail(
+  email: string,
+  name: string,
+  resetUrl: string
+) {
+  await sendEmail(
+    email,
+    "Reset your Kirathimo Agro Services password",
+    `
+      <div style="
+        font-family:Arial,sans-serif;
+        max-width:620px;
+        margin:0 auto;
+        color:#17231c
+      ">
+
+        <div style="
+          background:#06351f;
+          padding:24px;
+          border-radius:14px 14px 0 0;
+          color:#fff
+        ">
+          <div style="
+            font-size:22px;
+            font-weight:800
+          ">
+            KIRATHIMO
+          </div>
+
+          <div style="
+            font-size:12px;
+            letter-spacing:2px;
+            color:#c7ef72
+          ">
+            AGRO SERVICES
+          </div>
+        </div>
+
+        <div style="
+          padding:30px;
+          border:1px solid #e5e9e6;
+          border-top:0;
+          border-radius:0 0 14px 14px
+        ">
+
+          <h2>Password reset request</h2>
+
+          <p>
+            Hello ${name},
+          </p>
+
+          <p>
+            We received a request to change the password
+            for your Kirathimo account.
+          </p>
+
+          <p style="margin:26px 0">
+            ${emailButton(
+              resetUrl,
+              "Create a new password"
+            )}
+          </p>
+
+          <p style="
+            font-size:13px;
+            color:#64736a
+          ">
+            This link expires in 60 minutes and can only
+            be used once.
+          </p>
+
+          <p style="
+            font-size:13px;
+            color:#64736a
+          ">
+            If you did not request this, you can safely
+            ignore this email.
+          </p>
+
+        </div>
+      </div>
+    `
+  );
+}
+
+function resetTokenHash(rawToken: string) {
+  return crypto
+    .createHash("sha256")
+    .update(rawToken)
+    .digest("hex");
+}
+
 
 function invitationToken() {
   return crypto.randomBytes(32).toString("hex");
@@ -800,6 +1099,230 @@ app.post("/api/auth/login", async (req, res) => {
     });
   }
 });
+
+
+app.post(
+  "/api/auth/forgot-password",
+  async (req, res) => {
+    try {
+      await schema();
+
+      const email = String(
+        req.body.email || ""
+      ).trim().toLowerCase();
+
+      if (!email || !email.includes("@")) {
+        return res.status(400).json({
+          error: "Enter a valid email address.",
+        });
+      }
+
+      const users = await sql`
+        SELECT id, name, email, is_active
+        FROM users
+        WHERE email = ${email}
+        LIMIT 1
+      `;
+
+      if (
+        users.length &&
+        users[0].is_active
+      ) {
+        const rawToken =
+          crypto.randomBytes(32).toString("hex");
+
+        const hash =
+          resetTokenHash(rawToken);
+
+        const expires =
+          new Date(
+            Date.now() +
+            60 * 60 * 1000
+          );
+
+        await sql`
+          UPDATE password_reset_tokens
+          SET used_at = NOW()
+          WHERE user_id = ${users[0].id}
+            AND used_at IS NULL
+        `;
+
+        await sql`
+          INSERT INTO password_reset_tokens
+          (
+            user_id,
+            token_hash,
+            expires_at
+          )
+          VALUES
+          (
+            ${users[0].id},
+            ${hash},
+            ${expires}
+          )
+        `;
+
+        const resetUrl =
+          `${appUrl()}/?resetToken=${encodeURIComponent(rawToken)}`;
+
+        await sendPasswordResetEmail(
+          users[0].email,
+          users[0].name,
+          resetUrl
+        );
+      }
+
+      res.json({
+        ok: true,
+        message:
+          "If that email is registered, a password reset link has been sent.",
+      });
+
+    } catch (error) {
+      console.error(
+        "Forgot password:",
+        error
+      );
+
+      res.status(500).json({
+        error:
+          "Could not send the password reset email.",
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/auth/reset-password",
+  async (req, res) => {
+    try {
+      await schema();
+
+      const rawToken =
+        String(req.body.token || "").trim();
+
+      const password =
+        String(req.body.password || "");
+
+      if (
+        !rawToken ||
+        password.length < 8
+      ) {
+        return res.status(400).json({
+          error:
+            "A valid reset token and password of at least 8 characters are required.",
+        });
+      }
+
+      const hash =
+        resetTokenHash(rawToken);
+
+      const rows = await sql`
+        SELECT
+          pr.id,
+          pr.user_id,
+          pr.expires_at,
+          u.name,
+          u.email,
+          u.role,
+          u.business_id,
+          u.is_active,
+          u.permissions
+        FROM password_reset_tokens pr
+        JOIN users u
+          ON u.id = pr.user_id
+        WHERE pr.token_hash = ${hash}
+          AND pr.used_at IS NULL
+        LIMIT 1
+      `;
+
+      if (
+        !rows.length ||
+        new Date(
+          rows[0].expires_at
+        ).getTime() < Date.now()
+      ) {
+        return res.status(400).json({
+          error:
+            "This password reset link is invalid or has expired.",
+        });
+      }
+
+      const passwordHash =
+        await bcrypt.hash(
+          password,
+          12
+        );
+
+      await sql`
+        UPDATE users
+        SET password_hash =
+          ${passwordHash}
+        WHERE id =
+          ${rows[0].user_id}
+      `;
+
+      await sql`
+        UPDATE password_reset_tokens
+        SET used_at = NOW()
+        WHERE id =
+          ${rows[0].id}
+      `;
+
+      const user: User = {
+        id: rows[0].user_id,
+        name: rows[0].name,
+        email: rows[0].email,
+        role: rows[0].role,
+        businessId:
+          rows[0].business_id,
+        isActive:
+          rows[0].is_active,
+        permissions:
+          permissionsForRole(
+            rows[0].role,
+            rows[0].permissions
+          ),
+      };
+
+      await audit(
+        user.businessId,
+        user.id,
+        "password_reset",
+        "user",
+        user.id
+      );
+
+      res.setHeader(
+        "Set-Cookie",
+        cookie(makeJwt(user))
+      );
+
+      res.json({
+        ok: true,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          permissions:
+            user.permissions,
+        },
+      });
+
+    } catch (error) {
+      console.error(
+        "Reset password:",
+        error
+      );
+
+      res.status(500).json({
+        error:
+          "Could not reset password.",
+      });
+    }
+  }
+);
 
 app.post("/api/auth/logout", (_req, res) => {
   res.setHeader("Set-Cookie", clear);
@@ -1510,17 +2033,21 @@ app.post(
         }
       );
 
-      /*
-       * Email delivery will be connected in the next phase.
-       * Returning the URL lets the owner test the invitation
-       * workflow before configuring an email provider.
-       */
       const invitationUrl =
-        `/invite?token=${rawToken}`;
+        `${appUrl()}/?inviteToken=${encodeURIComponent(rawToken)}`;
+
+      await sendInvitationEmail({
+        email,
+        name,
+        role: "worker",
+        invitationUrl,
+        expiresAt: expires,
+      });
 
       res.status(201).json({
         ok: true,
-        invitationUrl,
+        message:
+          "Invitation created and email sent.",
         expiresAt:
           expires.toISOString(),
       });

@@ -1361,3 +1361,279 @@ html[data-theme="dark"] .sidebar small {
   color: rgba(255, 255, 255, 0.60) !important;
 }
 
+
+/* =========================================================
+   KIRATHIMO AUTH / INVITATION / PASSWORD RESET
+   Premium, highly visible light + dark mode
+   ========================================================= */
+
+.login {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  background:
+    radial-gradient(circle at 15% 15%, rgba(174, 225, 92, 0.18), transparent 30%),
+    radial-gradient(circle at 85% 85%, rgba(10, 75, 44, 0.12), transparent 32%),
+    linear-gradient(135deg, #f5f8f3 0%, #edf4ee 50%, #f9fbf7 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.login::before {
+  content: "";
+  position: absolute;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  background: rgba(199, 239, 114, 0.10);
+  top: -220px;
+  right: -160px;
+  pointer-events: none;
+}
+
+.login::after {
+  content: "";
+  position: absolute;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  background: rgba(6, 53, 31, 0.06);
+  bottom: -180px;
+  left: -140px;
+  pointer-events: none;
+}
+
+.login-card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 500px);
+  padding: 38px;
+  border: 1px solid rgba(10, 75, 44, 0.12);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 30px 80px rgba(3, 30, 18, 0.13),
+    0 8px 24px rgba(3, 30, 18, 0.07);
+  backdrop-filter: blur(18px);
+}
+
+.login-card .logo {
+  width: 58px;
+  height: 58px;
+  margin-bottom: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 17px;
+  background:
+    linear-gradient(145deg, #06351f, #0d6037);
+  color: #c7ef72 !important;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  box-shadow:
+    0 12px 28px rgba(6, 53, 31, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.login-card h1 {
+  margin: 0 0 10px;
+  color: #123522;
+  font-size: clamp(25px, 5vw, 34px);
+  line-height: 1.12;
+  letter-spacing: -0.7px;
+}
+
+.login-card > p {
+  color: #64736a;
+  line-height: 1.65;
+}
+
+.login-card form {
+  display: grid;
+  gap: 17px;
+  margin-top: 26px;
+}
+
+.login-card label {
+  display: grid;
+  gap: 8px;
+  color: #284334;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.login-card input {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  box-sizing: border-box;
+  border: 1px solid #d5dfd8;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #17231c;
+  outline: none;
+  font-size: 15px;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.login-card input::placeholder {
+  color: #9aa89f;
+}
+
+.login-card input:focus {
+  border-color: #78a94b;
+  box-shadow:
+    0 0 0 4px rgba(174, 225, 92, 0.17),
+    0 8px 20px rgba(3, 30, 18, 0.06);
+}
+
+.login-card .primary {
+  min-height: 50px;
+  margin-top: 5px;
+  border: 0;
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, #06351f 0%, #0a4b2c 55%, #0d6037 100%);
+  color: #ffffff !important;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow:
+    0 12px 25px rgba(6, 53, 31, 0.20);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    filter 160ms ease;
+}
+
+.login-card .primary:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 16px 32px rgba(6, 53, 31, 0.27);
+  filter: brightness(1.04);
+}
+
+.login-card .primary:active {
+  transform: translateY(0);
+}
+
+.login-card .hint {
+  margin-top: 20px;
+  color: #758279;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.login-card .error {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(184, 65, 65, 0.22);
+  border-radius: 11px;
+  background: rgba(184, 65, 65, 0.07);
+  color: #a33b3b;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.login-card .link-button {
+  margin-top: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #0a6037 !important;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.login-card .link-button:hover {
+  color: #06351f !important;
+  text-decoration: underline;
+}
+
+html[data-theme="dark"] .login {
+  background:
+    radial-gradient(circle at 15% 15%, rgba(174, 225, 92, 0.08), transparent 30%),
+    radial-gradient(circle at 85% 85%, rgba(10, 96, 55, 0.16), transparent 32%),
+    linear-gradient(135deg, #07130d 0%, #0b1d14 52%, #06100b 100%);
+}
+
+html[data-theme="dark"] .login-card {
+  border-color: rgba(199, 239, 114, 0.12);
+  background: rgba(11, 29, 20, 0.94);
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.40),
+    0 8px 30px rgba(0, 0, 0, 0.24);
+}
+
+html[data-theme="dark"] .login-card h1 {
+  color: #f3f8f2;
+}
+
+html[data-theme="dark"] .login-card > p {
+  color: #aab9af;
+}
+
+html[data-theme="dark"] .login-card label {
+  color: #d9e5dc;
+}
+
+html[data-theme="dark"] .login-card input {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #0e2419;
+  color: #f4f8f4;
+}
+
+html[data-theme="dark"] .login-card input::placeholder {
+  color: #718277;
+}
+
+html[data-theme="dark"] .login-card input:focus {
+  border-color: #8fbd59;
+  box-shadow:
+    0 0 0 4px rgba(174, 225, 92, 0.11),
+    0 8px 24px rgba(0, 0, 0, 0.20);
+}
+
+html[data-theme="dark"] .login-card .hint {
+  color: #87988e;
+}
+
+html[data-theme="dark"] .login-card .link-button {
+  color: #c7ef72 !important;
+}
+
+html[data-theme="dark"] .login-card .link-button:hover {
+  color: #e2f8b3 !important;
+}
+
+html[data-theme="dark"] .login-card .error {
+  background: rgba(184, 65, 65, 0.12);
+  border-color: rgba(255, 120, 120, 0.20);
+  color: #ffb2b2;
+}
+
+@media (max-width: 600px) {
+  .login {
+    padding: 20px 14px;
+    align-items: flex-start;
+  }
+
+  .login-card {
+    margin-top: 8vh;
+    padding: 27px 21px;
+    border-radius: 20px;
+  }
+
+  .login-card h1 {
+    font-size: 27px;
+  }
+}

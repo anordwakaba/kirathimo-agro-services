@@ -9,6 +9,24 @@ const cats = ["Animal Feeds","Seedlings","Fertilizer","Pesticides","Veterinary",
 const money = (n:number) => `KES ${Number(n||0).toLocaleString("en-KE",{minimumFractionDigits:2})}`;
 const today = () => new Date().toISOString().slice(0,10);
 
+function greeting(name: string) {
+  const hour = new Date().getHours();
+
+  let message = "Good evening";
+
+  if (hour >= 5 && hour < 12) {
+    message = "Good morning";
+  } else if (hour >= 12 && hour < 17) {
+    message = "Good afternoon";
+  } else if (hour >= 17 && hour < 22) {
+    message = "Good evening";
+  } else {
+    message = "Good night";
+  }
+
+  return `${message}, ${name.split(" ")[0]}`;
+}
+
 async function api<T=any>(path:string, options:RequestInit={}) {
   const res = await fetch(path,{...options,headers:{"Content-Type":"application/json",...(options.headers||{})},credentials:"include"});
   const data = await res.json().catch(()=>({}));
@@ -20,6 +38,16 @@ export default function App(){
   const [user,setUser]=useState<User|null|undefined>(undefined);
   const [tab,setTab]=useState("dashboard"),[date,setDate]=useState(today());
   const [items,setItems]=useState<Item[]>([]),[tx,setTx]=useState<Tx[]>([]),[summary,setSummary]=useState<any>({}),[error,setError]=useState("");
+
+  const [theme,setTheme]=useState<"light"|"dark">(() => {
+    const saved = localStorage.getItem("kirathimo-theme");
+    return saved === "dark" ? "dark" : "light";
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("kirathimo-theme", theme);
+  }, [theme]);
 
   async function refresh(){
     try{
@@ -57,7 +85,43 @@ export default function App(){
       <div className="account"><b>{user.name}</b><small>{user.role}</small><button onClick={async()=>{await api("/api/auth/logout",{method:"POST"});setUser(null)}}>Sign out</button></div>
     </aside>
     <main>
-      <header><div><h1>{tab[0].toUpperCase()+tab.slice(1)}</h1><p>Shared data • refreshes every 5 seconds</p></div><input type="date" value={date} onChange={e=>setDate(e.target.value)}/></header>
+      <header>
+        <div>
+          <h1>{tab[0].toUpperCase()+tab.slice(1)}</h1>
+          <p>{tab === "dashboard" ? greeting(user.name) : "Shared business data • refreshes every 5 seconds"}</p>
+        </div>
+
+        <div className="header-actions">
+          <button
+            className="theme-toggle"
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+            title={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+          >
+            {theme === "light" ? "🌙 Dark" : "☀️ Light"}
+          </button>
+
+          <input
+            type="date"
+            value={date}
+            onChange={e=>setDate(e.target.value)}
+          />
+        </div>
+      </header>
+      {tab === "dashboard" && (
+        <section className="welcome-banner">
+          <div>
+            <div className="eyebrow">Kirathimo Agro Services</div>
+            <h2>{greeting(user.name)} 👋</h2>
+            <p>
+              Manage your sales, stock, purchases and agency banking
+              from one powerful business platform.
+            </p>
+          </div>
+
+          <div className="welcome-icon">🌱</div>
+        </section>
+      )}
+
       {error&&<div className="notice">{error}</div>}
       {tab==="dashboard"&&<Dashboard s={summary} tx={tx}/>}
       {tab==="sales"&&<Entry type="sale" items={items} onSaved={refresh}/>}
